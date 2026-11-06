@@ -9,11 +9,6 @@ the next minute of a service's metrics from its last 60 minutes. When the real v
 from the prediction, that minute gets a high **anomaly score** — a `rate` that stays flat is
 boring no matter how low it is, but a drop that breaks the usual pattern is not.
 
-> **Status:** a personal / learning project (see
-> [`create_llm_from_scratch`](..), the parent folder it lives in), run against one real
-> Istio + VictoriaMetrics environment. It works, but it's not a maintained product — see
-> [Limitations](#limitations--honest-caveats) before relying on it for anything.
-
 
 ## How it works
 
