@@ -48,10 +48,11 @@ VictoriaMetrics (Istio metrics)
   per service/metric, uploaded to S3 after each run. `dataset.py` and `train.py` download
   that archive to train on the full accumulated history, not just whatever happens to be on
   the local disk.
-- **MLflow is the handoff point between training and scoring.** `train.py` always creates a
-  new model version tagged `candidate` — nothing goes live automatically. You look at the
-  run in MLflow and promote a version to the `production` alias yourself; `score.py`
-  defaults to reading whatever has that alias.
+- **MLflow is the handoff point between training and scoring.** A full (non-`--quick`)
+  `train.py` run always creates a new model version tagged `candidate` — nothing goes live
+  automatically. You look at the run in MLflow and promote a version to the `production`
+  alias yourself when you're ready. `score.py` defaults to the `candidate` alias (so you can
+  evaluate a new train immediately); pass `--alias production` once you've promoted.
 
 ## Repository layout
 
@@ -131,7 +132,7 @@ Everything is configured through environment variables, read in `automation/flow
 
 | Variable | Default | What it's for |
 |---|---|---|
-| `VM_HOST` | *(none — set your own)* | Your VictoriaMetrics/Prometheus-compatible query endpoint, e.g. `https://your-vm-host` |
+| `VM_HOST` | `https://istio-vm.syed.stream` | Your VictoriaMetrics/Prometheus-compatible query endpoint — override this for your own cluster |
 | `VM_AUTH_TOKEN` | unset | Bearer token, if your endpoint needs auth |
 | `ANOMALY_DATA_DIR` | `data` | Local working directory for pulled metrics |
 | `VM_RETENTION_SECONDS` | `345600` (4 days) | How far back `collect.py` will look for new data on a fresh checkpoint |
@@ -149,7 +150,7 @@ Requirements:
   extra configuration.
 - An S3 bucket, and either an IAM role (IRSA, if running in EKS) or a local AWS profile with
   read/write access to it.
-- Python 3.10+.
+- Python 3.9+ (3.10+ recommended).
 
 Then, one-off:
 
@@ -217,9 +218,8 @@ This is genuinely optional — everything above runs perfectly well with `mlflow
 for these manifests if you want the same always-on, scheduled setup this project itself
 uses.
 
-**Before applying any of this, see the [checklist below](#️-before-you-publish-or-fork-this)
-— several of these manifests reference a personal hostname and ship template
-credentials that must be replaced with your own**, specifically:
+**Before applying any of this, replace the template values below** — several of these
+manifests reference a personal hostname and ship demo credentials:
 
 1. Create your own Postgres credentials and update `mlflow/postgress-secret.yaml` and
    `prefect/postgres-secret.yaml` / `prefect/prefect-secret.yaml` accordingly (or let your

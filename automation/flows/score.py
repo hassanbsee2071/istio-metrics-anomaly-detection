@@ -237,7 +237,7 @@ def main():
     parser.add_argument("--service", help="one service, for example ns-01/svc-001")
     parser.add_argument("--all", action="store_true", help="score every service the model was trained on")
     parser.add_argument("--model-name", help="MLflow model name (default: derived from --service)")
-    parser.add_argument("--alias", default="candidate", help="which MLflow version to use (default: production)")
+    parser.add_argument("--alias", default="candidate", help="which MLflow version to use (default: candidate)")
     parser.add_argument("--model-file", help="use a local model.pth / .pth file instead of MLflow")
     parser.add_argument("--top", type=int, default=20, help="with --all: how many services to print")
     args = parser.parse_args()
