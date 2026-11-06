@@ -82,48 +82,150 @@ names are replaced with `ns-NN` / `svc-NNN` throughout (including inside
 `score.py` against a local model file — without access to any real cluster. It does **not**
 include anything that lets you reconstruct real service or namespace names.
 
-## Quickstart — try it with the bundled sample data
+## Steps to setup (local)
 
-This gets you a trained model and a scored anomaly, without touching VictoriaMetrics, S3,
-Prefect, or MLflow.
+Follow these in order if you are new and want to run everything on your laptop.
+You do **not** need Kubernetes for this path.
+
+### 1. Clone and install Python deps
 
 ```bash
 git clone https://github.com/hassanbsee2071/istio-metrics-anomaly-detection.git
 cd istio-metrics-anomaly-detection/automation
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+```
 
-# Point the pipeline at the bundled sample data instead of a live cluster
+### 2. Setup MLflow (local)
+
+Needed for any real (non-`--quick`) training run, and for scoring a model from the registry.
+`requirements.txt` installs `mlflow-skinny` (client only) — for a local tracking
+server you also need the full package once:
+
+```bash
+pip install mlflow
+```
+
+Open a **second terminal**, activate the same venv, then:
+
+```bash
+mlflow server --host 127.0.0.1 --port 5000
+# UI: http://127.0.0.1:5000
+```
+
+Back in your first terminal:
+
+```bash
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+```
+
+Leave the MLflow process running while you train/score.
+
+### 3. Setup Prefect (local, optional)
+
+Only needed if you want scheduled/deployed flows. For a one-off local test you can
+skip this and just run `python3 collect.py` / `python3 train.py` / `python3 score.py`
+directly.
+
+Open a **third terminal**, activate the same venv, then:
+
+```bash
+prefect server start
+# UI: http://127.0.0.1:4200
+```
+
+In another terminal (same venv), start a worker so deployments can run:
+
+```bash
+prefect worker start --pool default
+```
+
+To register the scheduled deployments from this repo (after forking — see
+[Scheduling it with Prefect](#scheduling-it-with-prefect)):
+
+```bash
+cd automation
+# edit prefect.yaml pull.repository to your fork first
+prefect deploy --all
+```
+
+### 4. Point the code at the sample data
+
+In the terminal where you will run the scripts:
+
+```bash
+cd istio-metrics-anomaly-detection/automation
+source .venv/bin/activate
 export ANOMALY_DATA_DIR="$(pwd)/../sample-data"
 export ENVIRONMENT=staging
-
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000   # from step 2
 cd flows
+```
+
+### 5. Order of scripts to execute
+
+| Step | Command | What it does | Needs |
+|---|---|---|---|
+| A | `python3 train.py --quick` | Fast sanity check that data → model pipeline works | sample data only |
+| B | `python3 train.py --services "ns-01/svc-001"` | Real train on one service; logs model to MLflow as `candidate` | MLflow (step 2) |
+| C | `python3 score.py --service ns-01/svc-001 --alias candidate --model-name anomaly-staging-ns-01-svc-001` | Score one service | MLflow **and** a live `VM_HOST` |
+
+Concrete sequence for the sample-data path:
+
+```bash
+# A — offline, no MLflow required (~few minutes). Writes metrics_model_quick.pth
 python3 train.py --quick
-```
 
-`--quick` is a fast sanity check (1 epoch, a random sample of windows) that confirms the
-whole pipeline runs end to end in a couple of minutes. It is **not** a usable model — see
-the warning it prints. To get something you can actually evaluate, train on one or two
-specific services for the full epoch count:
-
-```bash
+# B — real train on one anonymized service. Needs MLflow running.
 python3 train.py --services "ns-01/svc-001"
-```
 
-This needs `MLFLOW_TRACKING_URI` set (training always logs to MLflow — see
-[Scheduling it with Prefect](#scheduling-it-with-prefect) for how to get one running
-locally in a few minutes if you don't already have one). Once it finishes, score the
-service it just trained on:
-
-```bash
+# C — score (ONLY works if you have a live VictoriaMetrics; sample data alone is not enough)
+# export VM_HOST=https://your-victoria-metrics-host
 python3 score.py --service ns-01/svc-001 --alias candidate \
   --model-name anomaly-staging-ns-01-svc-001
 ```
 
-> Note: `score.py` calls VictoriaMetrics for the *latest* data, so it needs `VM_HOST` to
-> point at a real, currently-running VictoriaMetrics instance — the bundled sample data is a
-> fixed historical window and can't be used to simulate "the last 61 minutes, right now."
-> Training against the sample data works fully offline; scoring does not.
+What you can expect:
+
+- **`--quick`** confirms install + data loading work. It is **not** a model you should
+  trust for anomaly numbers.
+- **`train.py --services ...`** is the first useful local result: open
+  http://127.0.0.1:5000 and you should see a new run + a registered model tagged
+  `candidate`.
+- **`score.py`** always queries VictoriaMetrics for “the last 61 minutes *right now*.”
+  The bundled `sample-data/` is historical only, so scoring cannot be fully offline.
+  To finish step C you need your own `VM_HOST` (and matching real service names, not
+  `ns-01/svc-001`).
+
+Script order against **your own** cluster (after setting `VM_HOST`, S3/AWS, etc. — see
+the next section):
+
+```bash
+python3 collect.py                              # 1. pull metrics → local JSON → S3
+python3 train.py --download --services "ns/svc" # 2. download archive, train, log to MLflow
+python3 score.py --service ns/svc --alias candidate \
+  --model-name anomaly-staging-ns-svc           # 3. score live traffic
+```
+
+`dataset.py` is not run by hand — `train.py` calls it. `hello.py` is only a Prefect
+smoke-test flow.
+
+## Quickstart — fastest offline check
+
+If you only want to confirm the repo runs, without MLflow or Prefect:
+
+```bash
+git clone https://github.com/hassanbsee2071/istio-metrics-anomaly-detection.git
+cd istio-metrics-anomaly-detection/automation
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export ANOMALY_DATA_DIR="$(pwd)/../sample-data"
+export ENVIRONMENT=staging
+cd flows
+python3 train.py --quick
+```
+
+For the full local path (MLflow + real train), use [Steps to setup](#steps-to-setup-local).
 
 ## Running it against your own cluster
 
@@ -173,14 +275,9 @@ The flows in `automation/flows/` (`collect`, `train`, `hello`) are also deployab
 [Prefect](https://www.prefect.io/) deployments — `automation/prefect.yaml` defines a
 `collect` deployment on a 6-hour schedule and a manually-triggered `train` deployment.
 
-The quickest way to get a Prefect server + MLflow running locally for development:
-
-```bash
-pip install prefect mlflow
-prefect server start &            # http://127.0.0.1:4200
-mlflow server --host 0.0.0.0 --port 5000 &   # http://127.0.0.1:5000
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
-```
+For a first local run, start Prefect + MLflow with the commands in
+[Steps to setup](#steps-to-setup-local) (steps 2–3). You do not need `prefect deploy`
+just to call `python3 collect.py` / `train.py` by hand.
 
 To actually deploy the scheduled flows (rather than run them ad hoc), **fork this repo
 first** — `prefect.yaml`'s `pull` step clones from a specific GitHub URL at deploy time, so
