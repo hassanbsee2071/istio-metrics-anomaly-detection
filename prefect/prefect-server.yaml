@@ -1,0 +1,144 @@
+---
+# Source: prefect-server/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-server
+  namespace: "prefect"
+  labels:
+    app.kubernetes.io/name: prefect-server
+    helm.sh/chart: prefect-server-2026.9.14141910
+    app.kubernetes.io/instance: prefect-v1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "3.8.6"
+    app.kubernetes.io/component: server
+    prefect-version: 3.8.6
+spec:
+  revisionHistoryLimit: 10
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prefect-server
+      app.kubernetes.io/instance: prefect-v1
+      app.kubernetes.io/component: server
+  strategy: 
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prefect-server
+        helm.sh/chart: prefect-server-2026.9.14141910
+        app.kubernetes.io/instance: prefect-v1
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/version: "3.8.6"
+        app.kubernetes.io/component: server
+        prefect-version: 3.8.6
+    spec:
+      serviceAccountName: prefect-server
+      automountServiceAccountToken: true
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: prefect-server
+          image: "prefecthq/prefect:3.8.6-python3.11"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/bin/tini
+            - -g
+            - --
+            - /opt/prefect/entrypoint.sh
+          args:
+            - prefect
+            - server
+            - start
+            - --port
+            - "4200"
+          workingDir: /home/prefect
+          ports:
+            - containerPort: 4200
+          env:
+            - name: HOME
+              value: /home/prefect
+            - name: PREFECT_DEBUG_MODE
+              value: "true"
+            - name: PREFECT_LOGGING_SERVER_LEVEL
+              value: "DEBUG"
+            - name: PREFECT_SERVER_API_BASE_PATH
+              value: "/api"
+            - name: PREFECT_SERVER_API_HOST
+              value: 0.0.0.0
+            - name: PREFECT_SERVER_API_PORT
+              value: "4200"
+            - name: PREFECT_UI_API_URL
+              value: "https://prefect.syed.stream/api"
+              # value: "http://127.0.0.1:4200/api"
+              # value: "http://localhost:4200/api"
+              # value: "http://prefect-server.prefect.svc.cluster.local:4200/api"
+
+
+            - name: PREFECT_UI_STATIC_DIRECTORY
+              value: "/ui_build"
+            
+            - name: PREFECT_SERVER_DATABASE_CONNECTION_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-server-postgresql-connection
+                  key: connection-string
+          resources:
+            limits:
+              cpu: "2"
+              memory: 4Gi
+            requests:
+              cpu: 900m
+              memory: 1024Mi
+          securityContext:
+          #   allowPrivilegeEscalation: false
+            capabilities: {}
+          #   readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 4200
+            failureThreshold: 30
+            initialDelaySeconds: 0
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: "/api/health"
+              port: 4200
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: "/api/ready"
+              port: 4200
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          volumeMounts:
+            - mountPath: /home/prefect
+              name: scratch
+              subPathExpr: home
+            - mountPath: /tmp
+              name: scratch
+              subPathExpr: tmp
+            - mountPath: /ui_build
+              name: scratch
+              subPathExpr: ui-build
+      volumes:
+        - name: scratch
+          emptyDir: {}
+

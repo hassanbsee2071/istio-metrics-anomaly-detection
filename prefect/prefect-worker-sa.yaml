@@ -1,0 +1,18 @@
+---
+# Source: prefect-worker/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prefect-worker
+  namespace: "prefect"
+  labels:
+    app.kubernetes.io/name: prefect-worker
+    helm.sh/chart: prefect-worker-2026.9.14141910
+    app.kubernetes.io/instance: prefect-v1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "3.8.6"
+    app.kubernetes.io/component: worker
+    prefect-version: 3.8.6
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/prefect-worker
+

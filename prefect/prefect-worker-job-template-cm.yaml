@@ -1,0 +1,16 @@
+---
+# Source: prefect-worker/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prefect-worker-base-job-template
+  namespace: "prefect"
+  labels:
+    app.kubernetes.io/name: prefect-worker
+    helm.sh/chart: prefect-worker-2026.9.14141910
+    app.kubernetes.io/instance: prefect-v1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "3.8.6"
+    app.kubernetes.io/component: worker
+data:
+  baseJobTemplate.json: "{\n    \"variables\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"env\": {\n          \"title\": \"Environment Variables\",\n          \"description\": \"Environment variables to set in the container\",\n          \"default\": {},\n          \"type\": \"object\",\n          \"additionalProperties\": { \"type\": \"string\" }\n        },\n        \"image\": {\n          \"title\": \"Image\",\n          \"type\": \"string\",\n          \"default\": \"prefecthq/prefect:3.8.6-python3.11\"\n        }\n      }\n    },\n    \"job_configuration\": {\n      \"namespace\": \"prefect\",\n      \"env\": \"{{ env }}\",\n      \"job_manifest\": {\n        \"apiVersion\": \"batch/v1\",\n        \"kind\": \"Job\",\n        \"metadata\": {\n          \"namespace\": \"prefect\",\n          \"generateName\": \"prefect-job-\"\n        },\n        \"spec\": {\n          \"backoffLimit\": 0,\n          \"template\": {\n            \"spec\": {\n              \"parallelism\": 1,\n              \"completions\": 1,\n              \"restartPolicy\": \"Never\",\n              \"serviceAccountName\": \"prefect-worker\",\n              \"containers\": [\n                {\n                  \"name\": \"prefect-job\",\n                  \"image\": \"{{ image }}\",\n                  \"command\": [\"/bin/sh\", \"-c\"],\n                  \"args\": [\"apt update \u0026\u0026 apt install openssh-client -y \u0026\u0026 prefect flow-run execute\"],\n                  \"volumeMounts\": [\n                    {\n                      \"name\": \"git-ssh\",\n                      \"mountPath\": \"/root/.ssh\",\n                      \"readOnly\": true\n                    }\n                  ]\n                }\n              ],\n              \"volumes\": [\n                {\n                  \"name\": \"git-ssh\",\n                  \"secret\": {\n                    \"secretName\": \"ssh-key-secret\",\n                    \"defaultMode\": 256\n                  }\n                }\n              ]\n            }\n          }\n        }\n      }\n    }\n  }"

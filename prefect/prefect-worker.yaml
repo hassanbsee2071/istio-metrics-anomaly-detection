@@ -1,0 +1,181 @@
+---
+# Source: prefect-worker/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-worker
+  namespace: "prefect"
+  labels:
+    app.kubernetes.io/name: prefect-worker
+    helm.sh/chart: prefect-worker-2026.9.14141910
+    app.kubernetes.io/instance: prefect-v1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "3.8.6"
+    app.kubernetes.io/component: worker
+    prefect-version: 3.8.6
+spec:
+  revisionHistoryLimit: 10
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prefect-worker
+      app.kubernetes.io/instance: prefect-v1
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      annotations:
+        checksum/config: 800e995b83e8c52970d541a0deb3cfe2252e5a63ebb2f12a3958372aa761ef66
+      labels:
+        app.kubernetes.io/name: prefect-worker
+        helm.sh/chart: prefect-worker-2026.9.14141910
+        app.kubernetes.io/instance: prefect-v1
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/version: "3.8.6"
+        app.kubernetes.io/component: worker
+        prefect-version: 3.8.6
+    spec:
+      dnsConfig:
+        nameservers:
+        searches:
+        options:
+      serviceAccountName: prefect-worker
+      securityContext:
+        fsGroup: 1001
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: sync-base-job-template
+          image: "prefecthq/prefect:3.8.6-python3.11-kubernetes"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              work_pool_name="default"
+
+              # suppress work-pool inspect output, as we're just
+              # calling it to check the existence of the work-pool.
+
+              if ! prefect work-pool inspect $work_pool_name > /dev/null; then
+                echo ""
+                echo "Work pool $work_pool_name does not yet exist, meaning this is the initial run."
+                echo "The prefect-worker container will create the work pool on the initial run."
+                echo ""
+                echo "Exiting now!"
+                exit 0
+              fi
+
+              echo ""
+              echo "Work pool $work_pool_name exists; syncing the base job template now..."
+
+              echo ""
+              echo "Work pool $work_pool_name now updating with the following Base Job Template:"
+              echo ""
+              cat ./baseJobTemplate.json
+              echo ""
+
+              prefect work-pool update $work_pool_name --base-job-template ./baseJobTemplate.json
+          workingDir: /home/prefect
+          volumeMounts:
+            - mountPath: /home/prefect
+              name: scratch
+              subPathExpr: home
+            - mountPath: /tmp
+              name: scratch
+              subPathExpr: tmp
+            - mountPath: /home/prefect/baseJobTemplate.json
+              name: base-job-template-file
+              subPath: baseJobTemplate.json
+          env:
+            - name: HOME
+              value: /home/prefect
+            - name: PREFECT_API_URL
+              value: "http://prefect-server.prefect.svc.cluster.local:4200/api"
+            - name: PREFECT_KUBERNETES_CLUSTER_UID
+              value: ""
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+      containers:
+        - name: prefect-worker
+          image: "prefecthq/prefect:3.8.6-python3.11-kubernetes"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/bin/tini
+            - -g
+            - --
+            - /opt/prefect/entrypoint.sh
+          args:
+            - prefect
+            - worker
+            - start
+            - --type
+            - "kubernetes"
+            - --pool
+            - "default"
+            - --install-policy
+            - "prompt"
+            - --base-job-template
+            - baseJobTemplate.json
+          workingDir: /home/prefect
+          env:
+            - name: HOME
+              value: /home/prefect
+            - name: PREFECT_WORKER_PREFETCH_SECONDS
+              value: "10"
+            - name: PREFECT_WORKER_QUERY_SECONDS
+              value: "5"
+            - name: PREFECT_API_ENABLE_HTTP2
+              value: "true"
+            - name: PREFECT_API_URL
+              value: "http://prefect-server.prefect.svc.cluster.local:4200/api"
+            - name: PREFECT_KUBERNETES_CLUSTER_UID
+              value: ""
+            - name: PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES
+              value: "prefect"
+            - name: PREFECT_DEBUG_MODE
+              value: "false"
+          envFrom:
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {}
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+          volumeMounts:
+            - mountPath: /home/prefect
+              name: scratch
+              subPathExpr: home
+            - mountPath: /tmp
+              name: scratch
+              subPathExpr: tmp
+            - mountPath: /home/prefect/baseJobTemplate.json
+              name: base-job-template-file
+              subPath: baseJobTemplate.json
+      volumes:
+        - name: scratch
+          emptyDir: {}
+
+        - name: base-job-template-file
+          configMap:
+            name: prefect-worker-base-job-template

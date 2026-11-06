@@ -1,0 +1,8 @@
+boto3
+requests
+python-dotenv
+numpy
+mlflow-skinny
+prefect
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0

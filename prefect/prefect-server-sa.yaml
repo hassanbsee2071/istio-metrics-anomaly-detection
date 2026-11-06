@@ -1,0 +1,17 @@
+---
+# Source: prefect-server/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prefect-server
+  namespace: "prefect"
+  labels:
+    app.kubernetes.io/name: prefect-server
+    helm.sh/chart: prefect-server-2026.9.14141910
+    app.kubernetes.io/instance: prefect-v1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "3.8.6"
+    app.kubernetes.io/component: server
+    prefect-version: 3.8.6
+automountServiceAccountToken: true
+

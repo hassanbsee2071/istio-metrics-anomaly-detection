@@ -1,0 +1,39 @@
+definitions:
+  tags: &common_tags
+    - "eks"
+  work_pool: &common_work_pool
+    name: "default"
+
+pull:
+  - prefect.deployments.steps.git_clone:
+      id: clone-step
+      repository: git@github.com:hassanbsee2071/istio-metrics-anomaly-detection.git
+      branch: main
+
+  - prefect.deployments.steps.pip_install_requirements:
+      id: pip-install-step
+      directory: "{{ clone-step.directory }}"
+      requirements_file: "requirements.txt"
+
+
+deployments:
+- name: "collect"
+  tags: *common_tags
+  schedules:
+    - interval: 21600  # every 6 hours
+  entrypoint: "flows/collect.py:collect"
+  work_pool: *common_work_pool
+
+- name: "train"
+  tags: *common_tags
+  schedule: null
+  entrypoint: "flows/train.py:train"
+  work_pool:
+    name: "default"
+    job_variables:
+      env:
+        MLFLOW_TRACKING_URI: "https://mlflow.syed.stream"
+  parameters:
+    services: "ns-01/svc-001"
+    download: true
+    download_specific_service: true

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# Secrets / local env — never commit a real .env
+.env
+.env.*
+!.env.example
+
+# Trained model artifacts (large, regenerable — push via MLflow instead)
+*.pth
+mlruns/
+mlartifacts/
+
+# Local data pulled from VictoriaMetrics/S3 (sample-data/ is the tracked, anonymized exception)
+automation/flows/data/
+
+# OS cruft
+.DS_Store
